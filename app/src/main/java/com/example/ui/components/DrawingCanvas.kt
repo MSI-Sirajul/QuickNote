@@ -1,24 +1,15 @@
 package com.example.ui.components
 
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Paint
-import android.os.Environment
-import androidx.compose.foundation.Canvas as ComposeCanvas
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.Create
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Done
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Undo
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,256 +19,224 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.asAndroidPath
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
-import java.io.File
-import java.io.FileOutputStream
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.builtins.ListSerializer
 
-data class DrawPath(
-    val path: Path,
-    val color: Color,
-    val strokeWidth: Float,
-    val rawPoints: List<android.graphics.PointF> // Needed to output into native saving mechanism
-)
+@Serializable
+data class DrawPoint(val x: Float, val y: Float)
 
-@OptIn(ExperimentalLayoutApi::class)
+@Serializable
+data class DrawPathData(val color: Int, val width: Float, val points: List<DrawPoint>)
+
 @Composable
 fun DrawingCanvas(
-    onSketchSaved: (String) -> Unit,
-    onDismiss: () -> Unit
+    initialData: String?,
+    onDrawingSaved: (String?) -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
-    val paths = remember { mutableStateListOf<DrawPath>() }
-    val redoPaths = remember { mutableStateListOf<DrawPath>() }
+    var paths = remember {
+        mutableStateListOf<DrawPathData>()
+    }
 
-    var currentColor by remember { mutableStateOf(Color.Black) }
-    var currentStrokeWidth by remember { mutableStateOf(10f) }
+    // Load initial data
+    LaunchedEffect(initialData) {
+        if (!initialData.isNullOrBlank() && paths.isEmpty()) {
+            try {
+                val decoded = Json.decodeFromString(ListSerializer(DrawPathData.serializer()), initialData)
+                paths.addAll(decoded)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
 
-    var currentPathPoints = remember { mutableStateListOf<android.graphics.PointF>() }
-    var currentPath = remember { Path() }
+    var currentColor by remember { mutableStateOf(0xFF38BDF8.toInt()) }
+    var currentWidth by remember { mutableStateOf(8f) }
+    var currentPathPoints = remember { mutableStateListOf<DrawPoint>() }
 
-    val colors = listOf(
-        Color.Black, Color.Red, Color.Blue, Color.Green, Color.Yellow, 
-        Color(0xFFFF5722), Color(0xFF9C27B0), Color(0xFF00BCD4)
+    // Colors list for palette
+    val palette = listOf(
+        0xFFFFFFF.toInt(), // White / Eraser (or select clear drawing coordinate instead)
+        0xFF38BDF8.toInt(), // Sky blue
+        0xFFF87171.toInt(), // Coral
+        0xFF34D399.toInt(), // Emerald
+        0xFFFBBF24.toInt(), // Amber
+        0xFFA78BFA.toInt(), // Purple
+        0xFF000000.toInt()  // Black
     )
 
-    Card(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-    ) {
-        Column(
+    Column(modifier = modifier.fillMaxWidth()) {
+        Card(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp)
+                .fillMaxWidth()
+                .weight(1f)
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.medium)
+                .testTag("drawing_canvas_card"),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A))
         ) {
-            // Header Action controls
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Hand-Drawing Canvas",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary
-                )
-
-                Row {
-                    IconButton(
-                        onClick = {
-                            if (paths.isNotEmpty()) {
-                                val removed = paths.removeAt(paths.lastIndex)
-                                redoPaths.add(removed)
-                            }
-                        },
-                        enabled = paths.isNotEmpty()
-                    ) {
-                        Icon(Icons.Default.Undo, contentDescription = "Undo")
-                    }
-
-                    IconButton(
-                        onClick = {
-                            if (redoPaths.isNotEmpty()) {
-                                val restored = redoPaths.removeAt(redoPaths.lastIndex)
-                                paths.add(restored)
-                            }
-                        },
-                        enabled = redoPaths.isNotEmpty()
-                    ) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Redo")
-                    }
-
-                    IconButton(onClick = { paths.clear(); redoPaths.clear() }) {
-                        Icon(Icons.Default.Delete, contentDescription = "Clear all")
-                    }
-                }
-            }
-
-            // Canvas drawing pane
-            Box(
+            Canvas(
                 modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .border(2.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
-                    .background(Color.White)
+                    .fillMaxSize()
                     .pointerInput(Unit) {
                         detectDragGestures(
                             onDragStart = { offset ->
-                                currentPath = Path()
-                                currentPath.moveTo(offset.x, offset.y)
                                 currentPathPoints.clear()
-                                currentPathPoints.add(android.graphics.PointF(offset.x, offset.y))
-                                redoPaths.clear()
+                                currentPathPoints.add(DrawPoint(offset.x, offset.y))
                             },
                             onDrag = { change, dragAmount ->
                                 change.consume()
-                                val position = change.position
-                                currentPath.lineTo(position.x, position.y)
-                                currentPathPoints.add(android.graphics.PointF(position.x, position.y))
-
-                                // Dynamic list refresh
-                                val tempPath = DrawPath(
-                                    path = Path().apply { addPath(currentPath) },
-                                    color = currentColor,
-                                    strokeWidth = currentStrokeWidth,
-                                    rawPoints = currentPathPoints.toList()
-                                )
-                                if (paths.isNotEmpty() && currentPathPoints.size > 1) {
-                                    paths.removeAt(paths.lastIndex)
-                                }
-                                paths.add(tempPath)
+                                currentPathPoints.add(DrawPoint(change.position.x, change.position.y))
                             },
                             onDragEnd = {
-                                currentPathPoints.clear()
+                                if (currentPathPoints.isNotEmpty()) {
+                                    paths.add(
+                                        DrawPathData(
+                                            color = currentColor,
+                                            width = currentWidth,
+                                            points = currentPathPoints.toList()
+                                        )
+                                    )
+                                    currentPathPoints.clear()
+                                    // Callback
+                                    val serialized = Json.encodeToString(ListSerializer(DrawPathData.serializer()), paths.toList())
+                                    onDrawingSaved(serialized)
+                                }
                             }
                         )
                     }
+                    .testTag("drawing_canvas")
             ) {
-                ComposeCanvas(modifier = Modifier.fillMaxSize()) {
-                    paths.forEach { drawPath ->
+                // Draw historical paths
+                paths.forEach { pathData ->
+                    if (pathData.points.size > 1) {
+                        val path = Path().apply {
+                            moveTo(pathData.points[0].x, pathData.points[0].y)
+                            for (i in 1 until pathData.points.size) {
+                                lineTo(pathData.points[i].x, pathData.points[i].y)
+                            }
+                        }
                         drawPath(
-                            path = drawPath.path,
-                            color = drawPath.color,
+                            path = path,
+                            color = Color(pathData.color),
                             style = Stroke(
-                                width = drawPath.strokeWidth,
+                                width = pathData.width,
                                 cap = StrokeCap.Round,
                                 join = StrokeJoin.Round
                             )
                         )
                     }
                 }
+
+                // Draw active path dynamically
+                if (currentPathPoints.size > 1) {
+                    val path = Path().apply {
+                        moveTo(currentPathPoints[0].x, currentPathPoints[0].y)
+                        for (i in 1 until currentPathPoints.size) {
+                            lineTo(currentPathPoints[i].x, currentPathPoints[i].y)
+                        }
+                    }
+                    drawPath(
+                        path = path,
+                        color = Color(currentColor),
+                        style = Stroke(
+                            width = currentWidth,
+                            cap = StrokeCap.Round,
+                            join = StrokeJoin.Round
+                        )
+                    )
+                }
             }
+        }
 
-            Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
-            // Stroke and paint controls
-            FlowRow(
-                modifier = Modifier.fillMaxWidth(),
+        // Controllers row
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            // Colors list
+            Row(
+                modifier = Modifier.weight(1f),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                maxItemsInEachRow = 8
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                colors.forEach { color ->
-                    val isSelected = currentColor == color
+                palette.forEach { colorInt ->
+                    val isSelected = currentColor == colorInt
                     Box(
                         modifier = Modifier
-                            .size(36.dp)
+                            .size(if (isSelected) 36.dp else 28.dp)
                             .clip(CircleShape)
-                            .background(color)
+                            .background(Color(colorInt))
                             .border(
-                                width = if (isSelected) 3.dp else 1.dp,
-                                color = if (isSelected) MaterialTheme.colorScheme.primary else Color.LightGray,
+                                width = if (isSelected) 2.dp else 1.dp,
+                                color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray,
                                 shape = CircleShape
                             )
-                            .clickable { currentColor = color }
+                            .clickable(onClickLabel = "Select brush color") {
+                                currentColor = colorInt
+                            }
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Stroke size slider
+            // Undo / Clear Buttons
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Default.Create, contentDescription = "Stroke width")
-                Spacer(modifier = Modifier.width(8.dp))
-                Slider(
-                    value = currentStrokeWidth,
-                    onValueChange = { currentStrokeWidth = it },
-                    valueRange = 2f..40f,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Footer controls
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
-            ) {
-                Button(
-                    onClick = onDismiss,
-                    colors = ButtonDefaults.textButtonColors()
-                ) {
-                    Icon(Icons.Default.Clear, contentDescription = null)
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Cancel")
-                }
-
-                Spacer(modifier = Modifier.width(12.dp))
-
-                Button(
+                IconButton(
                     onClick = {
-                        // EXPORT TO BITMAP AND FILE
-                        val directory = File(context.filesDir, "attachments").apply { mkdirs() }
-                        val file = File(directory, "sketch_${System.currentTimeMillis()}.png")
-
-                        // Render onto Bitmap
-                        val defaultWidth = 1080
-                        val defaultHeight = 1440
-                        val bitmap = Bitmap.createBitmap(defaultWidth, defaultHeight, Bitmap.Config.ARGB_8888)
-                        val canvas = Canvas(bitmap)
-                        canvas.drawColor(android.graphics.Color.WHITE)
-
-                        val paint = Paint().apply {
-                            isAntiAlias = true
-                            style = Paint.Style.STROKE
-                            strokeCap = Paint.Cap.ROUND
-                            strokeJoin = Paint.Join.ROUND
+                        if (paths.isNotEmpty()) {
+                            paths.removeLast()
+                            val serialized = if (paths.isEmpty()) null else Json.encodeToString(
+                                ListSerializer(DrawPathData.serializer()),
+                                paths.toList()
+                            )
+                            onDrawingSaved(serialized)
                         }
-
-                        paths.forEach { drawPath ->
-                            paint.color = drawPath.color.toArgb()
-                            paint.strokeWidth = drawPath.strokeWidth * 2.5f // scale to bitmap resolution
-                            canvas.drawPath(drawPath.path.asAndroidPath(), paint)
-                        }
-
-                        try {
-                            FileOutputStream(file).use { out ->
-                                bitmap.compress(Bitmap.CompressFormat.PNG, 95, out)
-                            }
-                            onSketchSaved(file.absolutePath)
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        }
-                    }
+                    },
+                    modifier = Modifier.testTag("canvas_undo_button")
                 ) {
-                    Icon(Icons.Default.Done, contentDescription = null)
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Save Sketch")
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Undo,
+                        contentDescription = "Undo Drawing Stroke"
+                    )
+                }
+
+                IconButton(
+                    onClick = {
+                        paths.clear()
+                        onDrawingSaved(null)
+                    },
+                    modifier = Modifier.testTag("canvas_clear_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Clear,
+                        contentDescription = "Clear Entire Drawing"
+                    )
                 }
             }
+        }
+
+        // Stroke Width Selector
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Brush Size:", style = MaterialTheme.typography.labelSmall)
+            Slider(
+                value = currentWidth,
+                onValueChange = { currentWidth = it },
+                valueRange = 2f..32f,
+                modifier = Modifier.weight(1f).padding(horizontal = 8.dp).testTag("brush_width_slider")
+            )
         }
     }
 }

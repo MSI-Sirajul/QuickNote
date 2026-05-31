@@ -1,69 +1,36 @@
 package com.example.data
 
 import android.content.Context
-import androidx.datastore.core.DataStore
-import androidx.datastore.preferences.core.*
-import androidx.datastore.preferences.preferencesDataStore
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
+import android.content.SharedPreferences
 
-val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "quicknote_settings")
-
-enum class ThemeMode {
-    SYSTEM, LIGHT, DARK
-}
-
-class PreferencesManager(private val context: Context) {
+class PreferencesManager(context: Context) {
+    private val prefs: SharedPreferences = context.getSharedPreferences("quicknote_preferences", Context.MODE_PRIVATE)
 
     companion object {
-        val THEME_MODE_KEY = stringPreferencesKey("theme_mode")
-        val LAYOUT_GRID_KEY = booleanPreferencesKey("layout_grid")
-        val FONT_SIZE_SCALE_KEY = floatPreferencesKey("font_size_scale")
-        val BIOMETRIC_LOCK_KEY = booleanPreferencesKey("biometric_lock")
+        private const val KEY_THEME = "app_theme"
+        private const val KEY_LAYOUT = "notes_layout"
+        private const val KEY_PIN = "security_pin"
+        private const val KEY_BIOMETRIC_LOCK = "biometric_lock_enabled"
+        private const val KEY_APP_LOCKED = "app_locked_v2"
     }
 
-    val themeModeFlow: Flow<ThemeMode> = context.dataStore.data.map { preferences ->
-        val modeStr = preferences[THEME_MODE_KEY] ?: ThemeMode.SYSTEM.name
-        try {
-            ThemeMode.valueOf(modeStr)
-        } catch (e: Exception) {
-            ThemeMode.SYSTEM
-        }
-    }
+    var theme: String
+        get() = prefs.getString(KEY_THEME, "System") ?: "System"
+        set(value) = prefs.edit().putString(KEY_THEME, value).apply()
 
-    val layoutGridFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
-        preferences[LAYOUT_GRID_KEY] ?: true // default to grid view
-    }
+    var layout: String
+        get() = prefs.getString(KEY_LAYOUT, "Grid") ?: "Grid"
+        set(value) = prefs.edit().putString(KEY_LAYOUT, value).apply()
 
-    val fontSizeScaleFlow: Flow<Float> = context.dataStore.data.map { preferences ->
-        preferences[FONT_SIZE_SCALE_KEY] ?: 1.0f // default text size scale
-    }
+    var pin: String
+        get() = prefs.getString(KEY_PIN, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_PIN, value).apply()
 
-    val biometricLockFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
-        preferences[BIOMETRIC_LOCK_KEY] ?: false // default to unlocked
-    }
+    var isBiometricEnabled: Boolean
+        get() = prefs.getBoolean(KEY_BIOMETRIC_LOCK, false)
+        set(value) = prefs.edit().putBoolean(KEY_BIOMETRIC_LOCK, value).apply()
 
-    suspend fun setThemeMode(mode: ThemeMode) {
-        context.dataStore.edit { preferences ->
-            preferences[THEME_MODE_KEY] = mode.name
-        }
-    }
-
-    suspend fun setLayoutGrid(isGrid: Boolean) {
-        context.dataStore.edit { preferences ->
-            preferences[LAYOUT_GRID_KEY] = isGrid
-        }
-    }
-
-    suspend fun setFontSizeScale(scale: Float) {
-        context.dataStore.edit { preferences ->
-            preferences[FONT_SIZE_SCALE_KEY] = scale
-        }
-    }
-
-    suspend fun setBiometricLockEnabled(enabled: Boolean) {
-        context.dataStore.edit { preferences ->
-            preferences[BIOMETRIC_LOCK_KEY] = enabled
-        }
-    }
+    var isAppLocked: Boolean
+        get() = prefs.getBoolean(KEY_APP_LOCKED, false)
+        set(value) = prefs.edit().putBoolean(KEY_APP_LOCKED, value).apply()
 }

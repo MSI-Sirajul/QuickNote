@@ -5,251 +5,214 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import org.json.JSONArray
-import org.json.JSONObject
-
-enum class BlockType {
-    PARAGRAPH, H1, H2, H3, BULLET, NUMBERED, CHECKLIST, CODE, QUOTE
-}
-
-data class EditorBlock(
-    val type: BlockType,
-    var text: String,
-    var isChecked: Boolean = false
-)
+import com.example.data.EditorBlock
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.builtins.ListSerializer
+import java.util.UUID
 
 fun serializeBlocks(blocks: List<EditorBlock>): String {
-    val arr = JSONArray()
-    for (b in blocks) {
-        val obj = JSONObject().apply {
-            put("type", b.type.name)
-            put("text", b.text)
-            put("isChecked", b.isChecked)
-        }
-        arr.put(obj)
-    }
-    return arr.toString()
-}
-
-fun deserializeBlocks(rawString: String): List<EditorBlock> {
-    val list = mutableListOf<EditorBlock>()
-    if (rawString.isBlank()) {
-        list.add(EditorBlock(BlockType.PARAGRAPH, ""))
-        return list
-    }
-    try {
-        if (rawString.startsWith("[")) {
-            val arr = JSONArray(rawString)
-            for (i in 0 until arr.length()) {
-                val obj = arr.getJSONObject(i)
-                list.add(
-                    EditorBlock(
-                        type = BlockType.valueOf(obj.getString("type")),
-                        text = obj.getString("text"),
-                        isChecked = obj.optBoolean("isChecked", false)
-                    )
-                )
-            }
-        } else {
-            // Unstructured plain-text legacy import
-            list.add(EditorBlock(BlockType.PARAGRAPH, rawString))
-        }
+    return try {
+        Json.encodeToString(ListSerializer(EditorBlock.serializer()), blocks)
     } catch (e: Exception) {
-        list.add(EditorBlock(BlockType.PARAGRAPH, rawString))
+        ""
     }
-    if (list.isEmpty()) {
-        list.add(EditorBlock(BlockType.PARAGRAPH, ""))
-    }
-    return list
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+fun deserializeBlocks(serialized: String): List<EditorBlock> {
+    if (serialized.isBlank()) return emptyList()
+    return try {
+        Json.decodeFromString(ListSerializer(EditorBlock.serializer()), serialized)
+    } catch (e: Exception) {
+        // Fallback: treat as plain paragraph note content
+        listOf(EditorBlock(id = UUID.randomUUID().toString(), type = "paragraph", text = serialized))
+    }
+}
+
 @Composable
 fun RichTextEditorComponent(
-    modifier: Modifier = Modifier,
-    blocks: List<EditorBlock>,
-    onBlocksChanged: (List<EditorBlock>) -> Unit,
-    fontSizeMultiplier: Float = 1.0f
+    initialBlocksJson: String,
+    onBlocksChanged: (String) -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    val localBlocks = remember(blocks) { mutableStateListOf<EditorBlock>().apply { addAll(blocks) } }
+    var blocks = remember { 
+        mutableStateListOf<EditorBlock>().apply {
+            addAll(deserializeBlocks(initialBlocksJson))
+            if (isEmpty()) {
+                add(EditorBlock(UUID.randomUUID().toString(), "paragraph", ""))
+            }
+        }
+    }
 
-    fun notifyChange() {
-        onBlocksChanged(localBlocks.toList())
+    // Trigger update handler
+    fun triggerUpdate() {
+        val json = serializeBlocks(blocks.toList())
+        onBlocksChanged(json)
     }
 
     Column(modifier = modifier.fillMaxWidth()) {
-        // Selection toolbar triggers
-        Text(
-            text = "Editor Block Type Selection Shortcuts:",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(bottom = 4.dp, start = 4.dp)
-        )
-
-        ScrollableTabRow(
-            selectedTabIndex = 0,
-            edgePadding = 0.dp,
-            divider = {},
-            indicator = {},
+        // Toolbar for adding block types
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 12.dp)
+                .padding(vertical = 8.dp)
+                .background(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.shapes.medium)
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.SpaceAround,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            val options = listOf(
-                Pair(BlockType.PARAGRAPH, "Paragraph"),
-                Pair(BlockType.H1, "H1 Heading"),
-                Pair(BlockType.H2, "H2 Heading"),
-                Pair(BlockType.H3, "H3 Heading"),
-                Pair(BlockType.BULLET, "• Bullet"),
-                Pair(BlockType.NUMBERED, "1. Numbered"),
-                Pair(BlockType.CHECKLIST, "☑ Checklist"),
-                Pair(BlockType.CODE, "🔧 Code"),
-                Pair(BlockType.QUOTE, "“ Quote")
-            )
+            IconButton(
+                onClick = {
+                    blocks.add(EditorBlock(UUID.randomUUID().toString(), "paragraph", ""))
+                    triggerUpdate()
+                },
+                modifier = Modifier.testTag("add_para_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Notes,
+                    contentDescription = "Add Text Paragraph",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
 
-            options.forEach { (type, label) ->
-                AssistChip(
-                    onClick = {
-                        // Insert or alter selected block type
-                        localBlocks.add(EditorBlock(type, ""))
-                        notifyChange()
-                    },
-                    label = { Text(label) },
-                    modifier = Modifier.padding(end = 4.dp)
+            IconButton(
+                onClick = {
+                    blocks.add(EditorBlock(UUID.randomUUID().toString(), "heading", ""))
+                    triggerUpdate()
+                },
+                modifier = Modifier.testTag("add_heading_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Title,
+                    contentDescription = "Add Large Heading",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            IconButton(
+                onClick = {
+                    blocks.add(EditorBlock(UUID.randomUUID().toString(), "bullet", ""))
+                    triggerUpdate()
+                },
+                modifier = Modifier.testTag("add_bullet_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.FormatListBulleted,
+                    contentDescription = "Add Bullet Point",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            IconButton(
+                onClick = {
+                    blocks.add(EditorBlock(UUID.randomUUID().toString(), "todo", ""))
+                    triggerUpdate()
+                },
+                modifier = Modifier.testTag("add_todo_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.CheckBoxOutlineBlank,
+                    contentDescription = "Add Checkbox Item",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
 
-        Divider(modifier = Modifier.padding(bottom = 12.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
-        // Render editor items
+        // Blocks container
         Column(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            localBlocks.forEachIndexed { index, block ->
+            blocks.forEachIndexed { index, block ->
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Block indicator prefix
+                    // Block indicator (e.g. checkbox state or bullet or big T for heading)
                     when (block.type) {
-                        BlockType.BULLET -> {
-                            Text(
-                                " • ",
-                                style = LocalTextStyle.current.copy(
-                                    fontSize = (18f * fontSizeMultiplier).sp,
-                                    fontWeight = FontWeight.Bold
-                                ),
-                                modifier = Modifier.padding(horizontal = 8.dp)
+                        "heading" -> {
+                            Box(
+                                modifier = Modifier
+                                    .padding(end = 8.dp)
+                                    .size(24.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primaryContainer),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    "H",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            }
+                        }
+                        "bullet" -> {
+                            Box(
+                                modifier = Modifier
+                                    .padding(end = 12.dp, start = 6.dp)
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primary)
                             )
                         }
-                        BlockType.NUMBERED -> {
-                            Text(
-                                " ${index + 1}. ",
-                                style = LocalTextStyle.current.copy(
-                                    fontSize = (16f * fontSizeMultiplier).sp,
-                                    fontStyle = FontStyle.Italic
-                                ),
-                                modifier = Modifier.padding(horizontal = 4.dp)
-                            )
-                        }
-                        BlockType.CHECKLIST -> {
+                        "todo" -> {
                             Checkbox(
                                 checked = block.isChecked,
                                 onCheckedChange = { checked ->
-                                    val updated = block.copy(isChecked = checked)
-                                    localBlocks[index] = updated
-                                    notifyChange()
-                                }
-                            )
-                        }
-                        BlockType.QUOTE -> {
-                            Box(
+                                    blocks[index] = block.copy(isChecked = checked)
+                                    triggerUpdate()
+                                },
                                 modifier = Modifier
-                                    .width(4.dp)
-                                    .height(40.dp)
-                                    .background(MaterialTheme.colorScheme.secondary, RoundedCornerShape(2.dp))
-                                    .padding(end = 8.dp)
+                                    .padding(end = 4.dp)
+                                    .testTag("todo_block_checkbox_${block.id}")
                             )
                         }
                         else -> {
-                            // No prefix needed
+                            // Default paragraph: silent spacer
+                            Spacer(modifier = Modifier.width(8.dp))
                         }
                     }
 
-                    // Block Input Field
-                    val textStyle = when (block.type) {
-                        BlockType.H1 -> MaterialTheme.typography.headlineLarge.copy(
-                            fontSize = (28f * fontSizeMultiplier).sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        BlockType.H2 -> MaterialTheme.typography.headlineMedium.copy(
-                            fontSize = (22f * fontSizeMultiplier).sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.secondary
-                        )
-                        BlockType.H3 -> MaterialTheme.typography.titleLarge.copy(
-                            fontSize = (18f * fontSizeMultiplier).sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.tertiary
-                        )
-                        BlockType.CODE -> MaterialTheme.typography.bodyMedium.copy(
-                            fontSize = (14f * fontSizeMultiplier).sp,
-                            fontFamily = FontFamily.Monospace,
-                            background = MaterialTheme.colorScheme.surfaceVariant,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        BlockType.QUOTE -> MaterialTheme.typography.bodyLarge.copy(
-                            fontSize = (16f * fontSizeMultiplier).sp,
-                            fontStyle = FontStyle.Italic
-                        )
-                        else -> MaterialTheme.typography.bodyLarge.copy(
-                            fontSize = (16f * fontSizeMultiplier).sp,
-                            textDecoration = if (block.type == BlockType.CHECKLIST && block.isChecked) TextDecoration.LineThrough else TextDecoration.None
-                        )
-                    }
-
+                    // Content Field
                     TextField(
                         value = block.text,
-                        onValueChange = { textVal ->
-                            localBlocks[index] = block.copy(text = textVal)
-                            notifyChange()
+                        onValueChange = { newText ->
+                            blocks[index] = block.copy(text = newText)
+                            triggerUpdate()
                         },
                         placeholder = {
                             Text(
                                 text = when (block.type) {
-                                    BlockType.H1 -> "Heading 1"
-                                    BlockType.H2 -> "Heading 2"
-                                    BlockType.H3 -> "Heading 3"
-                                    BlockType.CODE -> "System.out.println(\"Hello Code\");"
-                                    BlockType.QUOTE -> "Your quote here..."
-                                    else -> "Type note text..."
+                                    "heading" -> "Heading..."
+                                    "bullet" -> "Bullet list item..."
+                                    "todo" -> "Task list item..."
+                                    else -> "Write text here..."
                                 },
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                                style = textStyle
+                                style = if (block.type == "heading") MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyLarge
                             )
                         },
-                        textStyle = textStyle,
+                        textStyle = if (block.type == "heading") {
+                            MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                        } else {
+                            MaterialTheme.typography.bodyLarge
+                        },
                         colors = TextFieldDefaults.colors(
                             focusedContainerColor = Color.Transparent,
                             unfocusedContainerColor = Color.Transparent,
@@ -257,36 +220,30 @@ fun RichTextEditorComponent(
                             focusedIndicatorColor = Color.Transparent,
                             unfocusedIndicatorColor = Color.Transparent
                         ),
-                        modifier = Modifier.weight(1f),
-                        keyboardOptions = KeyboardOptions(
-                            capitalization = KeyboardCapitalization.Sentences,
-                            imeAction = ImeAction.Next
-                        ),
-                        keyboardActions = KeyboardActions(
-                            onNext = {
-                                // Double enter adds new empty paragraph block
-                                localBlocks.add(index + 1, EditorBlock(BlockType.PARAGRAPH, ""))
-                                notifyChange()
-                            }
-                        )
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("block_text_field_${block.id}"),
+                        singleLine = block.type == "heading"
                     )
 
-                    // Individual Block deleter
+                    // Remove block button
                     IconButton(
                         onClick = {
-                            if (localBlocks.size > 1) {
-                                localBlocks.removeAt(index)
-                                notifyChange()
-                            } else {
-                                localBlocks[0] = EditorBlock(BlockType.PARAGRAPH, "")
-                                notifyChange()
+                            blocks.removeAt(index)
+                            if (blocks.isEmpty()) {
+                                blocks.add(EditorBlock(UUID.randomUUID().toString(), "paragraph", ""))
                             }
-                        }
+                            triggerUpdate()
+                        },
+                        modifier = Modifier
+                            .size(36.dp)
+                            .testTag("remove_block_button_${block.id}")
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Remove block",
-                            tint = MaterialTheme.colorScheme.error.copy(alpha = 0.5f)
+                            imageVector = Icons.Default.DeleteOutline,
+                            contentDescription = "Delete this block",
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                 }

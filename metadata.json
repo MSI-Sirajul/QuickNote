@@ -1,6 +1,6 @@
 {
   "name": "QuickNote",
-  "description": "A feature-rich, professional note-taking app with nested folders, rich text editing, hand drawing, and biometric protection.",
+  "description": "A feature-rich notes app with text styling, drawing, biometric security, and folders.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

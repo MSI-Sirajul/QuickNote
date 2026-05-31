@@ -1,27 +1,24 @@
 package com.example.ui.screens
 
-import android.widget.Toast
-import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.example.QuickNoteApp
 import com.example.data.Folder
@@ -30,332 +27,270 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FoldersScreen(
-    onFolderSelected: (Long) -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val app = context.applicationContext as QuickNoteApp
     val repository = app.repository
     val scope = rememberCoroutineScope()
 
-    // Query folders in real-time Flow
-    val allFolders by repository.getAllFolders().collectAsState(initial = emptyList())
-    val allNotes by repository.getAllNotes().collectAsState(initial = emptyList())
+    val folders by repository.allFolders.collectAsState(initial = emptyList())
 
-    var curParentId by remember { mutableStateOf<Long?>(null) }
-    var showCreateDialog by remember { mutableStateOf(false) }
+    var showAddDialog by remember { mutableStateOf(false) }
+    var folderName by remember { mutableStateOf("") }
+    var selectedColor by remember { mutableStateOf(0xFF38BDF8.toInt()) }
+    var selectedIcon by remember { mutableStateOf("Folder") }
 
-    var newFolderName by remember { mutableStateOf("") }
-    var selectedColorHex by remember { mutableStateOf("#FF6200EE") }
-    var selectedParentId by remember { mutableStateOf<Long?>(null) }
+    val colors = listOf(
+        0xFF38BDF8.toInt(), // Sky
+        0xFFF87171.toInt(), // Coral
+        0xFF34D399.toInt(), // Emerald
+        0xFFFBBF24.toInt(), // Amber
+        0xFFA78BFA.toInt(), // Purple
+        0xFFF472B6.toInt(), // Pink
+        0xFF94A3B8.toInt()  // Slate Grey
+    )
 
-    val currentFolder = remember(curParentId, allFolders) {
-        allFolders.find { it.id == curParentId }
-    }
+    val icons = listOf("Folder", "Work", "Home", "Book", "Star", "Payments", "Lightbulb")
 
-    val visibleFolders = remember(curParentId, allFolders) {
-        allFolders.filter { it.parentId == curParentId }
-    }
-
-    val colors = listOf("#FF6200EE", "#FF3700B3", "#FF03DAC5", "#FFFF5722", "#FF4CAF50", "#FF4CAF50", "#FFFFC107", "#FFE91E63")
-
-    // Breadcrumb calculation trail
-    val breadcrumbTrail = remember(curParentId, allFolders) {
-        val trailList = mutableListOf<Folder>()
-        var node = allFolders.find { it.id == curParentId }
-        while (node != null) {
-            trailList.add(0, node)
-            node = allFolders.find { it.id == node?.parentId }
-        }
-        trailList
+    fun getIcon(name: String) = when (name) {
+        "Work" -> Icons.Default.Work
+        "Home" -> Icons.Default.Home
+        "Book" -> Icons.Default.Book
+        "Star" -> Icons.Default.Star
+        "Payments" -> Icons.Default.Payments
+        "Lightbulb" -> Icons.Default.Lightbulb
+        else -> Icons.Default.Folder
     }
 
     Scaffold(
-        containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
-                title = { Text(currentFolder?.name ?: "Folders & Notebooks", fontWeight = FontWeight.Bold) },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.4f),
-                    titleContentColor = MaterialTheme.colorScheme.onSurface,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface
-                ),
+                title = { Text("Manage Folders") },
                 navigationIcon = {
-                    IconButton(onClick = {
-                        if (curParentId != null) {
-                            curParentId = currentFolder?.parentId
-                        } else {
-                            onBack()
-                        }
-                    }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Navigate back")
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier.testTag("folders_back_button")
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background
+                )
             )
         },
         floatingActionButton = {
             FloatingActionButton(
                 onClick = { 
-                    newFolderName = ""
-                    selectedParentId = curParentId
-                    selectedColorHex = colors[0]
-                    showCreateDialog = true 
+                    folderName = ""
+                    showAddDialog = true 
                 },
+                modifier = Modifier.testTag("add_folder_fab"),
                 containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                shape = RoundedCornerShape(16.dp),
-                elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp)
+                contentColor = MaterialTheme.colorScheme.onPrimary
             ) {
-                Icon(Icons.Default.CreateNewFolder, contentDescription = "Create Notebook")
+                Icon(Icons.Default.Add, contentDescription = "Create New Folder")
             }
-        }
+        },
+        containerColor = MaterialTheme.colorScheme.background,
+        modifier = modifier
     ) { innerPadding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(horizontal = 16.dp)
         ) {
-            // Breadcrumbs visual bar if nested
-            if (breadcrumbTrail.isNotEmpty()) {
-                Row(
+            if (folders.isEmpty()) {
+                // Empty State
+                Column(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .fillMaxSize()
+                        .padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
                 ) {
-                    Text(
-                        text = "Root",
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.clickable { curParentId = null },
-                        style = MaterialTheme.typography.bodyMedium
+                    Icon(
+                        imageVector = Icons.Default.FolderOpen,
+                        contentDescription = "No folders placeholder",
+                        modifier = Modifier.size(64.dp),
+                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
                     )
-
-                    breadcrumbTrail.forEachIndexed { index, folder ->
-                        Text("  /  ", color = Color.Gray)
-                        Text(
-                            text = folder.name,
-                            color = if (index == breadcrumbTrail.lastIndex) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.clickable { curParentId = folder.id },
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    }
-                }
-                Divider()
-                Spacer(modifier = Modifier.height(12.dp))
-            }
-
-            if (visibleFolders.isEmpty()) {
-                Box(
-                    modifier = Modifier.weight(1f).fillMaxWidth(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = Icons.Default.FolderOpen,
-                            contentDescription = null,
-                            modifier = Modifier.size(64.dp),
-                            tint = MaterialTheme.colorScheme.outline
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            "No notebooks/folders under this point.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.outline
-                        )
-                        Text(
-                            "Tap the pink card button below to add one!",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.outlineVariant
-                        )
-                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "No Folders Created Yet",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Text(
+                        text = "Categorize your notes by organizing them into colored folders.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+                        modifier = Modifier.padding(top = 4.dp),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
                 }
             } else {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(2),
-                    modifier = Modifier.weight(1f),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(visibleFolders) { folder ->
-                        val count = allNotes.count { it.folderId == folder.id }
+                    items(folders, key = { it.id }) { folder ->
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable {
-                                    onFolderSelected(folder.id) // view notes standard in this notebook
-                                }
-                                .border(
-                                    width = 1.dp,
-                                    color = MaterialTheme.colorScheme.outlineVariant,
-                                    shape = RoundedCornerShape(24.dp)
-                                ),
-                            shape = RoundedCornerShape(24.dp),
+                                .testTag("folder_card_${folder.id}"),
                             colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surface
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant
                             )
                         ) {
-                            Column(
+                            Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(16.dp)
+                                    .padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(
-                                            try {
-                                                Color(android.graphics.Color.parseColor(folder.colorHex))
-                                            } catch (e: Exception) {
-                                                MaterialTheme.colorScheme.primary
-                                            }
-                                        ),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(Icons.Default.Folder, contentDescription = null, tint = Color.White)
-                                }
-
-                                Spacer(modifier = Modifier.height(12.dp))
-
-                                Text(
-                                    text = folder.name,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    maxLines = 1
-                                )
-
-                                Spacer(modifier = Modifier.height(4.dp))
-
-                                Text(
-                                    text = "$count Notes inside",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-
-                                Spacer(modifier = Modifier.height(12.dp))
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    TextButton(
-                                        onClick = { curParentId = folder.id },
-                                        contentPadding = PaddingValues(0.dp)
-                                    ) {
-                                        Text("Open Nest", style = MaterialTheme.typography.bodySmall)
-                                    }
-
-                                    IconButton(
-                                        onClick = {
-                                            scope.launch {
-                                                repository.deleteFolder(folder)
-                                                Toast.makeText(context, "Notebook removed successfully.", Toast.LENGTH_SHORT).show()
-                                            }
-                                        }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .clip(CircleShape)
+                                            .background(Color(folder.color)),
+                                        contentAlignment = Alignment.Center
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.Delete,
-                                            contentDescription = "Delete folder",
-                                            tint = MaterialTheme.colorScheme.error,
-                                            modifier = Modifier.size(20.dp)
+                                            imageVector = getIcon(folder.iconName),
+                                            contentDescription = null,
+                                            tint = Color.White
                                         )
                                     }
+
+                                    Spacer(modifier = Modifier.width(16.dp))
+
+                                    Text(
+                                        text = folder.name,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+
+                                IconButton(
+                                    onClick = {
+                                        scope.launch {
+                                            repository.deleteFolder(folder)
+                                        }
+                                    },
+                                    modifier = Modifier.testTag("delete_folder_${folder.id}")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = "Delete Folder",
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
                                 }
                             }
                         }
                     }
                 }
             }
-        }
 
-        // New folder creation dialog
-        if (showCreateDialog) {
-            AlertDialog(
-                onDismissRequest = { showCreateDialog = false },
-                title = { Text("Create New Folder / Notebook") },
-                text = {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        OutlinedTextField(
-                            value = newFolderName,
-                            onValueChange = { newFolderName = it },
-                            label = { Text("Name of Notebook") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        // Color options list
-                        Text("Choose Cover Accent Color:", style = MaterialTheme.typography.labelMedium)
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            colors.forEach { hex ->
-                                val rgb = Color(android.graphics.Color.parseColor(hex))
-                                val isSelected = hex == selectedColorHex
-                                Box(
-                                    modifier = Modifier
-                                        .size(32.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(rgb)
-                                        .clickable { selectedColorHex = hex }
-                                        .border(
-                                            width = if (isSelected) 3.dp else 0.dp,
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                            shape = RoundedCornerShape(8.dp)
-                                        )
-                                )
-                            }
-                        }
-
-                        // Select nesting option
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Checkbox(
-                                checked = selectedParentId != null,
-                                onCheckedChange = { checked ->
-                                    selectedParentId = if (checked) curParentId else null
-                                }
+            if (showAddDialog) {
+                AlertDialog(
+                    onDismissRequest = { showAddDialog = false },
+                    title = { Text("Create Folder") },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                            OutlinedTextField(
+                                value = folderName,
+                                onValueChange = { folderName = it },
+                                label = { Text("Folder Name") },
+                                modifier = Modifier.fillMaxWidth().testTag("dialog_folder_name_input"),
+                                singleLine = true
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                "Nest under current folder (${currentFolder?.name ?: "Root Folder"})",
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
-                    }
-                },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            if (newFolderName.isNotBlank()) {
-                                scope.launch {
-                                    val newFolder = Folder(
-                                        name = newFolderName,
-                                        parentId = selectedParentId,
-                                        colorHex = selectedColorHex
+
+                            // Color Selector row
+                            Text("Select Color:", style = MaterialTheme.typography.labelSmall)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                colors.forEach { colorInt ->
+                                    val isColorSelected = selectedColor == colorInt
+                                    Box(
+                                        modifier = Modifier
+                                            .size(28.dp)
+                                            .clip(CircleShape)
+                                            .background(Color(colorInt))
+                                            .border(
+                                                width = if (isColorSelected) 2.dp else 0.dp,
+                                                color = Color.White,
+                                                shape = CircleShape
+                                            )
+                                            .clickable { selectedColor = colorInt }
                                     )
-                                    repository.insertFolder(newFolder)
-                                    showCreateDialog = false
                                 }
-                            } else {
-                                Toast.makeText(context, "Please write folder name.", Toast.LENGTH_SHORT).show()
+                            }
+
+                            // Icon Selector dynamic selection
+                            Text("Select Icon:", style = MaterialTheme.typography.labelSmall)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                icons.forEach { iconName ->
+                                    val isIconSelected = selectedIcon == iconName
+                                    IconButton(
+                                        onClick = { selectedIcon = iconName },
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .background(
+                                                color = if (isIconSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                                                shape = CircleShape
+                                            )
+                                    ) {
+                                        Icon(
+                                            imageVector = getIcon(iconName),
+                                            contentDescription = null,
+                                            tint = if (isIconSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                }
                             }
                         }
-                    ) {
-                        Text("Create")
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                if (folderName.isNotBlank()) {
+                                    scope.launch {
+                                        repository.insertFolder(
+                                            Folder(
+                                                name = folderName,
+                                                color = selectedColor,
+                                                iconName = selectedIcon
+                                            )
+                                        )
+                                        showAddDialog = false
+                                    }
+                                }
+                            },
+                            modifier = Modifier.testTag("dialog_folder_confirm")
+                        ) {
+                            Text("Save")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showAddDialog = false }) {
+                            Text("Cancel")
+                        }
                     }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showCreateDialog = false }) {
-                        Text("Cancel")
-                    }
-                }
-            )
+                )
+            }
         }
     }
 }

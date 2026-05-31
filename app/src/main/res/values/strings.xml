@@ -1,3 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">QuickNote</string>
+    <string name="notification_channel_name">Note Reminders</string>
+    <string name="notification_channel_desc">Used to show notifications for notes that have direct reminders set.</string>
 </resources>

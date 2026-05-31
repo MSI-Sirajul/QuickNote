@@ -1,112 +1,72 @@
 package com.example.ui.screens
 
-import android.content.Context
-import android.net.Uri
-import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Fingerprint
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.ViewModule
 import androidx.compose.material3.*
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.QuickNoteApp
-import com.example.data.ThemeMode
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onThemeChanged: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val app = context.applicationContext as QuickNoteApp
-    val prefManager = app.preferencesManager
-    val scope = rememberCoroutineScope()
+    val prefs = app.preferencesManager
+    val security = app.securityManager
 
-    // Load datastore preferences
-    val currentTheme by prefManager.themeModeFlow.collectAsState(initial = ThemeMode.SYSTEM)
-    val isGridLayout by prefManager.layoutGridFlow.collectAsState(initial = true)
-    val fontSizeScale by prefManager.fontSizeScaleFlow.collectAsState(initial = 1.0f)
-    val isBiometricEnabled by prefManager.biometricLockFlow.collectAsState(initial = false)
+    var currentThemeSetting by remember { mutableStateOf(prefs.theme) }
+    var currentLayoutSetting by remember { mutableStateOf(prefs.layout) }
+    var isBiometricEnabled by remember { mutableStateOf(prefs.isBiometricEnabled) }
+    var registeredPin by remember { mutableStateOf(prefs.pin) }
 
-    var isPerformingBackup by remember { mutableStateOf(false) }
+    var newPinInput by remember { mutableStateOf("") }
+    var showPinDialog by remember { mutableStateOf(false) }
+    var pinDialogError by remember { mutableStateOf("") }
 
-    // Backup ZIP exporter Launcher SAF
-    val backupLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("application/zip")
-    ) { uri: Uri? ->
-        if (uri != null) {
-            scope.launch {
-                isPerformingBackup = true
-                try {
-                    context.contentResolver.openOutputStream(uri)?.use { os ->
-                        val success = app.repository.exportBackup(os)
-                        if (success) {
-                            Toast.makeText(context, "Backup exported successfully!", Toast.LENGTH_SHORT).show()
-                        } else {
-                            Toast.makeText(context, "Failed to export backup.", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                } catch (e: Exception) {
-                    Toast.makeText(context, "Error writing backup: ${e.message}", Toast.LENGTH_LONG).show()
-                } finally {
-                    isPerformingBackup = false
-                }
-            }
-        }
-    }
-
-    // Restore ZIP importer Launcher SAF
-    val restoreLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri: Uri? ->
-        if (uri != null) {
-            scope.launch {
-                isPerformingBackup = true
-                try {
-                    context.contentResolver.openInputStream(uri)?.use { isStream ->
-                        val success = app.repository.restoreBackup(isStream)
-                        if (success) {
-                            Toast.makeText(context, "Database restored successfully! Restart app to load.", Toast.LENGTH_LONG).show()
-                        } else {
-                            Toast.makeText(context, "Invalid backup package.", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                } catch (e: Exception) {
-                    Toast.makeText(context, "Error reading backup file: ${e.message}", Toast.LENGTH_LONG).show()
-                } finally {
-                    isPerformingBackup = false
-                }
-            }
-        }
-    }
+    val hasBiographicSensor = remember { security.canAuthenticate() }
 
     Scaffold(
-        containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
-                title = { Text("Settings", fontWeight = FontWeight.Bold) },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.4f),
-                    titleContentColor = MaterialTheme.colorScheme.onSurface,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface
-                ),
+                title = { Text("Settings") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier.testTag("settings_back")
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background
+                )
             )
-        }
+        },
+        containerColor = MaterialTheme.colorScheme.background,
+        modifier = modifier
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -116,146 +76,257 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            Spacer(modifier = Modifier.height(4.dp))
+            // Section: Visual Themes
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Palette, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Appearance", style = MaterialTheme.typography.titleMedium)
+                    }
 
-            // Section 1: Themes & Styling
-            Text("Themes & General Style", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-            
-            // Selector Segmented button for theme choice
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Select Theme Mode:", style = MaterialTheme.typography.bodyMedium)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    ThemeMode.values().forEach { mode ->
-                        val selected = currentTheme == mode
-                        FilterChip(
-                            selected = selected,
-                            onClick = {
-                                scope.launch { prefManager.setThemeMode(mode) }
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Theme drop-down or simple selection
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Theme Preference", style = MaterialTheme.typography.bodyLarge)
+                        var themeExpanded by remember { mutableStateOf(false) }
+                        Box {
+                            Button(
+                                onClick = { themeExpanded = true },
+                                modifier = Modifier.testTag("theme_selection_button")
+                            ) {
+                                Text(currentThemeSetting)
+                            }
+                            DropdownMenu(
+                                expanded = themeExpanded,
+                                onDismissRequest = { themeExpanded = false }
+                            ) {
+                                listOf("Light", "Dark", "System").forEach { tOption ->
+                                    DropdownMenuItem(
+                                        text = { Text(tOption) },
+                                        onClick = {
+                                            prefs.theme = tOption
+                                            currentThemeSetting = tOption
+                                            themeExpanded = false
+                                            onThemeChanged()
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Notes Layout Grid", style = MaterialTheme.typography.bodyLarge)
+                        Switch(
+                            checked = currentLayoutSetting == "Grid",
+                            onCheckedChange = { isGrid ->
+                                val lay = if (isGrid) "Grid" else "List"
+                                prefs.layout = lay
+                                currentLayoutSetting = lay
                             },
-                            label = { Text(mode.name) },
-                            leadingIcon = if (selected) {
-                                { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
-                            } else null,
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.testTag("layout_switch")
                         )
                     }
                 }
             }
 
-            // Grid vs lists toggle
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            // Section: Security Settings
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
-                Column {
-                    Text("Grid View Dashboard", style = MaterialTheme.typography.bodyLarge)
-                    Text("Toggle default layout for your notes", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Privacy & Security", style = MaterialTheme.typography.titleMedium)
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Note PIN Access", style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                text = if (registeredPin.isEmpty()) "Not configured" else "PIN is enabled",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                        }
+                        Button(
+                            onClick = { 
+                                newPinInput = ""
+                                pinDialogError = ""
+                                showPinDialog = true 
+                            },
+                            modifier = Modifier.testTag("setup_pin_button")
+                        ) {
+                            Text(if (registeredPin.isEmpty()) "Setup PIN" else "Change PIN")
+                        }
+                    }
+
+                    if (registeredPin.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        TextButton(
+                            onClick = {
+                                prefs.pin = ""
+                                registeredPin = ""
+                            },
+                            colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                            modifier = Modifier.testTag("remove_pin_button")
+                        ) {
+                            Text("Disable PIN Access")
+                        }
+                    }
+
+                    if (hasBiographicSensor) {
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Biometric Lock", style = MaterialTheme.typography.bodyLarge)
+                                Text(
+                                    text = "Unlock secure notes using system biometric sensors.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                )
+                            }
+                            Switch(
+                                checked = isBiometricEnabled,
+                                onCheckedChange = { isEnabled ->
+                                    prefs.isBiometricEnabled = isEnabled
+                                    isBiometricEnabled = isEnabled
+                                },
+                                modifier = Modifier.testTag("biometric_switch")
+                            )
+                        }
+                    } else {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Fingerprint, contentDescription = null, tint = MaterialTheme.colorScheme.error.copy(alpha = 0.5f))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                "Biometric sensors not available on this device.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
                 }
-                Switch(
-                    checked = isGridLayout,
-                    onCheckedChange = { scope.launch { prefManager.setLayoutGrid(it) } }
-                )
             }
 
-            // Text scaling slider
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text("Display Text Size Scale", style = MaterialTheme.typography.bodyLarge)
-                    Text("${(fontSizeScale * 100).toInt()}%", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                }
-                Slider(
-                    value = fontSizeScale,
-                    onValueChange = { scope.launch { prefManager.setFontSizeScale(it) } },
-                    valueRange = 0.8f..1.5f,
-                    steps = 6
-                )
-            }
-
-            Divider()
-
-            // Section 2: Integrity & Security
-            Text("Privacy & Security", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            // Section: App Info Version Box
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Biometric Authentication Lock", style = MaterialTheme.typography.bodyLarge)
-                    Text("Locks app entry with fingerprint/face metrics", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Switch(
-                    checked = isBiometricEnabled,
-                    onCheckedChange = { scope.launch { prefManager.setBiometricLockEnabled(it) } }
-                )
-            }
-
-            Divider()
-
-            // Section 3: Manual sync / zip backup SAF
-            Text("Backup & Offline Synchronisations", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Button(
-                    onClick = { backupLauncher.launch("QuickNote_Backup_${System.currentTimeMillis()}.zip") },
-                    modifier = Modifier.weight(1f),
-                    enabled = !isPerformingBackup
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Icon(Icons.Default.CloudUpload, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Export ZIP")
-                }
-
-                FilledTonalButton(
-                    onClick = { restoreLauncher.launch(arrayOf("application/zip")) },
-                    modifier = Modifier.weight(1f),
-                    enabled = !isPerformingBackup
-                ) {
-                    Icon(Icons.Default.CloudDownload, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Restore ZIP")
-                }
-            }
-
-            if (isPerformingBackup) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text("Processing archive backup data...", style = MaterialTheme.typography.bodySmall)
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(32.dp)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "QuickNote",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Version 3.1 (Stable Release)",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
+                    Text(
+                        text = "Clean, secure block notes with biometric protection.",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
                 }
             }
+        }
 
-            Divider()
+        // Dialog for setting up PIN
+        if (showPinDialog) {
+            AlertDialog(
+                onDismissRequest = { showPinDialog = false },
+                title = { Text("Configure Security PIN") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Create a numeric PIN (4-6 digits) to secure your locked notebooks.", style = MaterialTheme.typography.bodyMedium)
+                        OutlinedTextField(
+                            value = newPinInput,
+                            onValueChange = { 
+                                if (it.length <= 6) {
+                                    newPinInput = it
+                                    pinDialogError = ""
+                                }
+                            },
+                            label = { Text("Enter 4-6 Digit PIN") },
+                            visualTransformation = PasswordVisualTransformation(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.fillMaxWidth().testTag("dialog_pin_input"),
+                            singleLine = true
+                        )
 
-            // Section 4: About Software
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 32.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text("QuickNote App", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text("Version 3.1 (Stable Release)", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("Security Status: Fully Compliant & Sign Verified", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("© 2026 QuickNote. All parts locally secured.", style = MaterialTheme.typography.labelSmall)
-            }
+                        if (pinDialogError.isNotEmpty()) {
+                            Text(
+                                text = pinDialogError,
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            if (newPinInput.length in 4..6) {
+                                prefs.pin = newPinInput
+                                registeredPin = newPinInput
+                                showPinDialog = false
+                            } else {
+                                pinDialogError = "PIN must be between 4 and 6 digits."
+                            }
+                        },
+                        modifier = Modifier.testTag("dialog_pin_confirm")
+                    ) {
+                        Text("Save")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showPinDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
         }
     }
 }

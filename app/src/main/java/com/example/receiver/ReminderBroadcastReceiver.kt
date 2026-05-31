@@ -9,56 +9,71 @@ import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.example.MainActivity
+import com.example.R
 
 class ReminderBroadcastReceiver : BroadcastReceiver() {
 
     companion object {
-        const val CHANNEL_ID = "quicknote_reminders"
-        const val CHANNEL_NAME = "QuickNote Reminders"
+        const val CHANNEL_ID = "quicknote_reminders_channel_v1"
+        const val EXTRA_NOTE_ID = "note_id"
+        const val EXTRA_NOTE_TITLE = "note_title"
+        const val EXTRA_NOTE_CONTENT = "note_content"
+        const val ACTION_SHOW_REMINDER = "com.example.ACTION_SHOW_REMINDER"
+
+        fun createNotificationChannel(context: Context) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val name = context.getString(R.string.notification_channel_name)
+                val descriptionText = context.getString(R.string.notification_channel_desc)
+                val importance = NotificationManager.IMPORTANCE_HIGH
+                val channel = NotificationChannel(CHANNEL_ID, name, importance).apply {
+                    description = descriptionText
+                }
+                val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                notificationManager.createNotificationChannel(channel)
+            }
+        }
     }
 
     override fun onReceive(context: Context, intent: Intent) {
-        val noteId = intent.getLongExtra("note_id", 0L)
-        val noteTitle = intent.getStringExtra("note_title") ?: "Note Reminder"
-        val noteContent = intent.getStringExtra("note_content") ?: "Remember to check your note!"
-        val lat = intent.getDoubleExtra("latitude", 0.0)
-        val isGeofence = intent.getBooleanExtra("is_geofence", false)
+        if (intent.action == ACTION_SHOW_REMINDER || intent.action == "android.intent.action.BOOT_COMPLETED") {
+            val noteId = intent.getIntExtra(EXTRA_NOTE_ID, -1)
+            val title = intent.getStringExtra(EXTRA_NOTE_TITLE) ?: "Task Reminder"
+            val body = intent.getStringExtra(EXTRA_NOTE_CONTENT) ?: "You have a reminder scheduled for this note."
 
-        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            if (noteId == -1) return
 
-        // Create Channel on newer versions
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(CHANNEL_ID, CHANNEL_NAME, NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "Triggers task reminders and geofence alerts."
+            // Create notification channel
+            createNotificationChannel(context)
+
+            // Pending intent to open NoteEditor when clicked
+            val openAppIntent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                putExtra(EXTRA_NOTE_ID, noteId)
             }
-            notificationManager.createNotificationChannel(channel)
+
+            val pendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            } else {
+                PendingIntent.FLAG_UPDATE_CURRENT
+            }
+
+            val pendingIntent = PendingIntent.getActivity(
+                context,
+                noteId, // unique request code
+                openAppIntent,
+                pendingIntentFlags
+            )
+
+            val builder = NotificationCompat.Builder(context, CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.ic_popup_reminder) // Fallback standard icon
+                .setContentTitle(title)
+                .setContentText(body)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true)
+                .setContentIntent(pendingIntent)
+
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.notify(noteId, builder.build())
         }
-
-        // Open app on click
-        val clickIntent = Intent(context, MainActivity::class.java).apply {
-            putExtra("open_note_id", noteId)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-        }
-
-        val pendingIntent = PendingIntent.getActivity(
-            context,
-            noteId.toInt(),
-            clickIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val titleText = if (isGeofence) "QuickNote Geofence: Near Location!" else "QuickNote Reminder"
-        val bodyText = if (isGeofence) "You entered the perimeter for note: \"$noteTitle\"" else "$noteTitle: $noteContent"
-
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle(titleText)
-            .setContentText(bodyText)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setAutoCancel(true)
-            .setContentIntent(pendingIntent)
-            .build()
-
-        notificationManager.notify(noteId.toInt(), notification)
     }
 }

@@ -2,19 +2,32 @@ package com.example.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Frosted Glass Core Colors
-val GlassPrimary = Color(0xFF0061A4)
-val GlassActivePill = Color(0xFFC2E7FF)
-val GlassPinnedCard = Color(0xFFD3E3FD)
-val GlassVoiceCard = Color(0xFFF3E8FF)
-val GlassVoiceBtn = Color(0xFF6750A4)
-val GlassVoiceBtnContainer = Color(0xFFEADDFF)
-val GlassTextHigh = Color(0xFF1A1C1E)
-val GlassTextMed = Color(0xFF44474E)
-val GlassTextLow = Color(0xFF74777F)
-val GlassAccentRed = Color(0xFFBA1A1A)
+// Cosmic Slate Theme
+val CosmicNavy = Color(0xFF0F172A)      // Deep dark navy
+val CosmicBackground = Color(0xFF020617) // Background dark
+val CosmicSurface = Color(0xFF1E293B)    // Surface elements
+val CosmicPrimary = Color(0xFF38BDF8)    // Sky blue accent
+val CosmicSecondary = Color(0xFF0EA5E9)  // Deep sky blue accent
+val CosmicTertiary = Color(0xFF30C5FF)   // Cyan
+val CosmicCardBg = Color(0xFF1E293B)     // Default card bg
 
-val GlassBgBase = Color(0xFFF0F4F9)
-val GlassSurfaceTranslucent = Color(0x99FFFFFF) // White copy 60%
-val GlassSurfaceTranslucenter = Color(0xB3FFFFFF) // White copy 70%
-val GlassBorderHighlight = Color(0x80FFFFFF) // White copy 50%
+// Light Cosmic Slate Theme
+val CosmicLightBg = Color(0xFFF8FAFC)
+val CosmicLightSurface = Color(0xFFFFFFFF)
+val CosmicLightPrimary = Color(0xFF0284C7)
+val CosmicLightSecondary = Color(0xFF0369A1)
+val CosmicLightTertiary = Color(0xFF0EA5E9)
+
+// Note Background Color Options
+val NoteColorColors = listOf(
+    0xFF1E293B, // Blue Slate Dark
+    0xFF312E81, // Indigo Dark
+    0xFFFFECB3, // Warm Gold Pastel
+    0xFFF87171, // Coral Red Pastel
+    0xFF34D399, // Emerald Pastel
+    0xFF60A5FA, // Sky Blue Pastel
+    0xFFF472B6, // Pink Pastel
+    0xFFA78BFA, // Purple Pastel
+    0xFFFBBF24, // Amber Pastel
+    0xFF475569  // Mid Slate Grey
+)
