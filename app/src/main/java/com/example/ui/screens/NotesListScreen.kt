@@ -28,8 +28,10 @@ import androidx.compose.ui.unit.sp
 import com.example.QuickNoteApp
 import com.example.data.Folder
 import com.example.data.Note
-import com.example.ui.components.deserializeBlocks
 import kotlinx.coroutines.launch
+import androidx.compose.material.icons.outlined.Notes
+import androidx.compose.material.icons.outlined.Code
+import androidx.compose.material.icons.outlined.Draw
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -103,13 +105,58 @@ fun NotesListScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = { onNavigateToEditor(-1) },
-                modifier = Modifier.testTag("new_note_fab"),
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "Create Note")
+            var isMenuExpanded by remember { mutableStateOf(false) }
+            Box(contentAlignment = Alignment.BottomEnd) {
+                FloatingActionButton(
+                    onClick = { isMenuExpanded = true },
+                    modifier = Modifier.testTag("new_note_fab"),
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Create Note")
+                }
+
+                DropdownMenu(
+                    expanded = isMenuExpanded,
+                    onDismissRequest = { isMenuExpanded = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Add Text Note") },
+                        onClick = {
+                            isMenuExpanded = false
+                            scope.launch {
+                                val newId = repository.insertNote(Note(title = "", content = "", noteType = "TEXT"))
+                                onNavigateToEditor(newId.toInt())
+                            }
+                        },
+                        leadingIcon = { Icon(Icons.Outlined.Notes, contentDescription = null) },
+                        modifier = Modifier.testTag("add_text_note_item")
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Add Markdown Note") },
+                        onClick = {
+                            isMenuExpanded = false
+                            scope.launch {
+                                val newId = repository.insertNote(Note(title = "", content = "", noteType = "MARKDOWN"))
+                                onNavigateToEditor(newId.toInt())
+                            }
+                        },
+                        leadingIcon = { Icon(Icons.Outlined.Code, contentDescription = null) },
+                        modifier = Modifier.testTag("add_markdown_note_item")
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Add Sketch Canvas") },
+                        onClick = {
+                            isMenuExpanded = false
+                            scope.launch {
+                                val newId = repository.insertNote(Note(title = "", content = "", noteType = "SKETCH"))
+                                onNavigateToEditor(newId.toInt())
+                            }
+                        },
+                        leadingIcon = { Icon(Icons.Outlined.Draw, contentDescription = null) },
+                        modifier = Modifier.testTag("add_sketch_note_item")
+                    )
+                }
             }
         },
         containerColor = MaterialTheme.colorScheme.background,
@@ -236,18 +283,19 @@ fun NoteCard(
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val blocks = remember(note.content) { deserializeBlocks(note.content) }
-    val plainContent = remember(blocks) {
-        if (blocks.isNotEmpty()) {
-            blocks.joinToString(" ") { it.text }
+    val plainContent = remember(note.content, note.noteType) {
+        if (note.noteType == "TEXT") {
+            try {
+                org.jsoup.Jsoup.parse(note.content).text()
+            } catch (e: Exception) {
+                note.content
+            }
+        } else if (note.noteType == "SKETCH") {
+            "Sketch Canvas Drawing Artwork"
         } else {
             note.content
         }
     }
-
-    val isWhiteTheme = note.color == 0xFFFFFFFF.toInt()
-    val contrastTextColor = if (isWhiteTheme) Color.Black else Color.White
-    val secondaryContrastColor = contrastTextColor.copy(alpha = 0.72f)
 
     Card(
         modifier = modifier
@@ -255,114 +303,134 @@ fun NoteCard(
             .clickable { onClick() }
             .testTag("note_card_${note.id}"),
         colors = CardDefaults.cardColors(
-            containerColor = Color(note.color)
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(14.dp)
+        Row(
+            modifier = Modifier.height(IntrinsicSize.Min)
         ) {
-            // Note Card Header
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
+            // Far Left Colored Accent Bar based on note's Color
+            Box(
+                modifier = Modifier
+                    .width(6.dp)
+                    .fillMaxHeight()
+                    .background(Color(note.color))
+            )
+
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(14.dp)
             ) {
-                Text(
-                    text = note.title.ifBlank { "Untitled" },
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    color = contrastTextColor,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-
-                if (note.isPinned) {
-                    Icon(
-                        imageVector = Icons.Default.PushPin,
-                        contentDescription = "Pinned Note",
-                        tint = if (isWhiteTheme) MaterialTheme.colorScheme.primary else Color.Yellow,
-                        modifier = Modifier
-                            .size(16.dp)
-                            .padding(start = 4.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Body preview details
-            if (note.isLocked) {
+                // Header Row: Title & Icons
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(vertical = 4.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Lock,
-                        contentDescription = "Locked Content Indicator",
-                        tint = secondaryContrastColor,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "Encrypted Note (Locked)",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = secondaryContrastColor
-                    )
-                }
-            } else {
-                Text(
-                    text = plainContent.ifBlank { "Empty note" },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = secondaryContrastColor,
-                    maxLines = 4,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Footer of note card holding indicators
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (note.reminderTime != null) {
-                        Icon(
-                            imageVector = Icons.Default.Alarm,
-                            contentDescription = "Scheduling alarm set",
-                            tint = secondaryContrastColor,
-                            modifier = Modifier.size(14.dp)
-                        )
-                    }
+                    Text(
+                        text = note.title.ifBlank { "Untitled" },
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
 
-                    if (!note.drawingData.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.width(6.dp))
+
+                    // Type indicator icon
+                    val typeIcon = when (note.noteType) {
+                        "TEXT" -> Icons.Default.Notes
+                        "MARKDOWN" -> Icons.Default.Code
+                        "SKETCH" -> Icons.Default.Brush
+                        else -> Icons.Default.Notes
+                    }
+                    Icon(
+                        imageVector = typeIcon,
+                        contentDescription = "Note Type ${note.noteType}",
+                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                        modifier = Modifier.size(16.dp)
+                    )
+
+                    if (note.isPinned) {
+                        Spacer(modifier = Modifier.width(6.dp))
                         Icon(
-                            imageVector = Icons.Default.Brush,
-                            contentDescription = "Attached Canvas Sketches",
-                            tint = secondaryContrastColor,
-                            modifier = Modifier.size(14.dp)
+                            imageVector = Icons.Default.PushPin,
+                            contentDescription = "Pinned Note",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
                         )
                     }
                 }
 
-                IconButton(
-                    onClick = onDelete,
-                    modifier = Modifier
-                        .size(32.dp)
-                        .testTag("delete_note_button_${note.id}")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.DeleteOutline,
-                        contentDescription = "Delete note",
-                        tint = if (isWhiteTheme) MaterialTheme.colorScheme.error else Color.White,
-                        modifier = Modifier.size(18.dp)
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // Content snippet (exactly 2 lines max)
+                if (note.isLocked) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Lock,
+                            contentDescription = "Encrypted Note locked",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Encrypted Note (Locked)",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    Text(
+                        text = plainContent.ifBlank { "Empty note" },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
                     )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Footer Row: Alert Status, delete icon
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (note.reminderTime != null) {
+                            Icon(
+                                imageVector = Icons.Default.Alarm,
+                                contentDescription = "Alarm active",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    }
+
+                    IconButton(
+                        onClick = onDelete,
+                        modifier = Modifier
+                            .size(32.dp)
+                            .testTag("delete_note_button_${note.id}")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.DeleteOutline,
+                            contentDescription = "Delete note",
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
             }
         }

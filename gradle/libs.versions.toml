@@ -18,6 +18,8 @@ vico = "1.14.0"
 junitKtx = "1.1.5"
 robolectric = "4.12"
 roborazzi = "1.13.0"
+jsoup = "1.15.4"
+compose-markdown = "0.3.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -58,6 +60,8 @@ roborazzi = { group = "io.github.takahirom.roborazzi", name = "roborazzi", versi
 roborazzi-compose = { group = "io.github.takahirom.roborazzi", name = "roborazzi-compose", version.ref = "roborazzi" }
 roborazzi-junit3 = { group = "io.github.takahirom.roborazzi", name = "roborazzi-junit3", version.ref = "roborazzi" }
 androidx-junit-ktx = { group = "androidx.test.ext", name = "junit-ktx", version.ref = "junitKtx" }
+jsoup = { group = "org.jsoup", name = "jsoup", version.ref = "jsoup" }
+compose-markdown = { group = "com.github.jeziellago", name = "compose-markdown", version.ref = "compose-markdown" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

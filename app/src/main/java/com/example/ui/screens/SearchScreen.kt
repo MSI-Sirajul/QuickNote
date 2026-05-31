@@ -19,8 +19,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.example.QuickNoteApp
 import com.example.data.Note
-import com.example.ui.components.deserializeBlocks
-import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -122,10 +120,13 @@ fun SearchScreen(
                 ) {
                     items(matchingNotes, key = { it.id }) { note ->
                         // Render brief card
-                        val blocks = remember(note.content) { deserializeBlocks(note.content) }
-                        val plainContent = remember(blocks) {
-                            if (blocks.isNotEmpty()) {
-                                blocks.joinToString(" ") { it.text }
+                        val plainContent = remember(note.content, note.noteType) {
+                            if (note.noteType == "TEXT") {
+                                try {
+                                    org.jsoup.Jsoup.parse(note.content).text()
+                                } catch (e: Exception) {
+                                    note.content
+                                }
                             } else {
                                 note.content
                             }

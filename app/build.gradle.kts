@@ -13,8 +13,8 @@ android {
         applicationId = "com.aistudio.quicknote.kxmpzq"
         minSdk = 26
         targetSdk = 36
-        versionCode = 4
-        versionName = "3.1"
+        versionCode = 5
+        versionName = "4.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -80,6 +80,9 @@ dependencies {
 
     // Biometric
     implementation(libs.androidx.biometric)
+
+    // Rich text and Markdown
+    implementation(libs.jsoup)
 
     // Glance (Widget)
     implementation(libs.androidx.glance.appwidget)

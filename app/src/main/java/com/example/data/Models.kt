@@ -38,6 +38,7 @@ data class Note(
     val isLocked: Boolean = false,
     val reminderTime: Long? = null,
     val drawingData: String? = null, // Coordinate points serialized to JSON
+    val noteType: String = "TEXT", // "TEXT", "MARKDOWN", "SKETCH"
     val lastModified: Long = System.currentTimeMillis()
 )
 

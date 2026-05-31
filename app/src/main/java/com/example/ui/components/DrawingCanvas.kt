@@ -1,5 +1,10 @@
 package com.example.ui.components
 
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas as AndroidCanvas
+import android.graphics.Paint as AndroidPaint
+import android.graphics.Path as AndroidPath
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -10,6 +15,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,11 +27,14 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.builtins.ListSerializer
+import java.io.File
+import java.io.FileOutputStream
 
 @Serializable
 data class DrawPoint(val x: Float, val y: Float)
@@ -33,17 +42,59 @@ data class DrawPoint(val x: Float, val y: Float)
 @Serializable
 data class DrawPathData(val color: Int, val width: Float, val points: List<DrawPoint>)
 
+// Utility function to convert Drawing Coordinates into a physical PNG in InternalStorage
+fun savePathsAsPng(context: Context, paths: List<DrawPathData>): String {
+    val bitmap = Bitmap.createBitmap(800, 800, Bitmap.Config.ARGB_8888)
+    val canvas = AndroidCanvas(bitmap)
+    // Dark professional background
+    canvas.drawColor(0xFF0F172A.toInt())
+    
+    val paint = AndroidPaint().apply {
+        isAntiAlias = true
+        style = AndroidPaint.Style.STROKE
+        strokeCap = AndroidPaint.Cap.ROUND
+        strokeJoin = AndroidPaint.Join.ROUND
+    }
+    
+    paths.forEach { pathData ->
+        if (pathData.points.size > 1) {
+            val path = AndroidPath()
+            path.moveTo(pathData.points[0].x, pathData.points[0].y)
+            for (i in 1 until pathData.points.size) {
+                path.lineTo(pathData.points[i].x, pathData.points[i].y)
+            }
+            paint.color = pathData.color
+            paint.strokeWidth = pathData.width
+            canvas.drawPath(path, paint)
+        }
+    }
+    
+    val dir = File(context.filesDir, "drawings")
+    if (!dir.exists()) dir.mkdirs()
+    val file = File(dir, "sketch_${System.currentTimeMillis()}.png")
+    try {
+        FileOutputStream(file).use { out ->
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
+    } finally {
+        bitmap.recycle()
+    }
+    return file.absolutePath
+}
+
 @Composable
 fun DrawingCanvas(
     initialData: String?,
     onDrawingSaved: (String?) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var paths = remember {
-        mutableStateListOf<DrawPathData>()
-    }
+    val context = LocalContext.current
+    val paths = remember { mutableStateListOf<DrawPathData>() }
+    val redoPaths = remember { mutableStateListOf<DrawPathData>() }
 
-    // Load initial data
+    // Load initial drawing data points
     LaunchedEffect(initialData) {
         if (!initialData.isNullOrBlank() && paths.isEmpty()) {
             try {
@@ -59,15 +110,14 @@ fun DrawingCanvas(
     var currentWidth by remember { mutableStateOf(8f) }
     var currentPathPoints = remember { mutableStateListOf<DrawPoint>() }
 
-    // Colors list for palette
     val palette = listOf(
-        0xFFFFFFF.toInt(), // White / Eraser (or select clear drawing coordinate instead)
+        0xFF0F172A.toInt(), // Eraser / Board Color
         0xFF38BDF8.toInt(), // Sky blue
         0xFFF87171.toInt(), // Coral
         0xFF34D399.toInt(), // Emerald
         0xFFFBBF24.toInt(), // Amber
         0xFFA78BFA.toInt(), // Purple
-        0xFF000000.toInt()  // Black
+        0xFFFFFFFF.toInt()  // White
     )
 
     Column(modifier = modifier.fillMaxWidth()) {
@@ -94,15 +144,15 @@ fun DrawingCanvas(
                             },
                             onDragEnd = {
                                 if (currentPathPoints.isNotEmpty()) {
-                                    paths.add(
-                                        DrawPathData(
-                                            color = currentColor,
-                                            width = currentWidth,
-                                            points = currentPathPoints.toList()
-                                        )
+                                    val newPath = DrawPathData(
+                                        color = currentColor,
+                                        width = currentWidth,
+                                        points = currentPathPoints.toList()
                                     )
+                                    paths.add(newPath)
+                                    redoPaths.clear() // Clear redo history upon drawing new line
                                     currentPathPoints.clear()
-                                    // Callback
+                                    
                                     val serialized = Json.encodeToString(ListSerializer(DrawPathData.serializer()), paths.toList())
                                     onDrawingSaved(serialized)
                                 }
@@ -111,7 +161,6 @@ fun DrawingCanvas(
                     }
                     .testTag("drawing_canvas")
             ) {
-                // Draw historical paths
                 paths.forEach { pathData ->
                     if (pathData.points.size > 1) {
                         val path = Path().apply {
@@ -132,7 +181,6 @@ fun DrawingCanvas(
                     }
                 }
 
-                // Draw active path dynamically
                 if (currentPathPoints.size > 1) {
                     val path = Path().apply {
                         moveTo(currentPathPoints[0].x, currentPathPoints[0].y)
@@ -155,7 +203,6 @@ fun DrawingCanvas(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Controllers row
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -186,7 +233,7 @@ fun DrawingCanvas(
                 }
             }
 
-            // Undo / Clear Buttons
+            // Undo / Redo / Clear Buttons
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -194,7 +241,8 @@ fun DrawingCanvas(
                 IconButton(
                     onClick = {
                         if (paths.isNotEmpty()) {
-                            paths.removeLast()
+                            val removed = paths.removeAt(paths.size - 1)
+                            redoPaths.add(removed)
                             val serialized = if (paths.isEmpty()) null else Json.encodeToString(
                                 ListSerializer(DrawPathData.serializer()),
                                 paths.toList()
@@ -206,26 +254,46 @@ fun DrawingCanvas(
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.Undo,
-                        contentDescription = "Undo Drawing Stroke"
+                        contentDescription = "Undo stroke"
+                    )
+                }
+
+                IconButton(
+                    onClick = {
+                        if (redoPaths.isNotEmpty()) {
+                            val restored = redoPaths.removeAt(redoPaths.size - 1)
+                            paths.add(restored)
+                            val serialized = Json.encodeToString(
+                                ListSerializer(DrawPathData.serializer()),
+                                paths.toList()
+                            )
+                            onDrawingSaved(serialized)
+                        }
+                    },
+                    modifier = Modifier.testTag("canvas_redo_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Redo,
+                        contentDescription = "Redo stroke"
                     )
                 }
 
                 IconButton(
                     onClick = {
                         paths.clear()
+                        redoPaths.clear()
                         onDrawingSaved(null)
                     },
                     modifier = Modifier.testTag("canvas_clear_button")
                 ) {
                     Icon(
                         imageVector = Icons.Default.Clear,
-                        contentDescription = "Clear Entire Drawing"
+                        contentDescription = "Clear Canvas"
                     )
                 }
             }
         }
 
-        // Stroke Width Selector
         Row(
             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
