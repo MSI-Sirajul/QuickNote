@@ -251,7 +251,7 @@ fun SettingsScreen(
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Text("QuickNote App", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text("Version 3.0 (Stable Release)", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Version 3.1 (Stable Release)", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text("Security Status: Fully Compliant & Sign Verified", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                 Spacer(modifier = Modifier.height(8.dp))
                 Text("© 2026 QuickNote. All parts locally secured.", style = MaterialTheme.typography.labelSmall)
