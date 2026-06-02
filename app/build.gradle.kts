@@ -6,15 +6,15 @@ plugins {
 }
 
 android {
-    namespace = "com.example"
+    namespace = "com.msi.quicknote"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.aistudio.quicknote.kxmpzq"
+        applicationId = "com.msi.quicknote"
         minSdk = 26
         targetSdk = 36
-        versionCode = 7
-        versionName = "4.3"
+        versionCode = 9
+        versionName = "6.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
