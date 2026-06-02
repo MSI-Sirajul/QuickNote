@@ -13,8 +13,8 @@ android {
         applicationId = "com.aistudio.quicknote.kxmpzq"
         minSdk = 26
         targetSdk = 36
-        versionCode = 5
-        versionName = "4.1"
+        versionCode = 7
+        versionName = "4.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -30,6 +30,12 @@ android {
         }
         debug {
             signingConfig = signingConfigs.getByName("debug")
+        }
+    }
+
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
         }
     }
 

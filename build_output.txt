@@ -2,9 +2,9 @@
 QUICKNOTE - BUILD OUTPUT REPORT
 =========================================
 Status: SUCCESS
-Version: 4.1 (versionCode: 5)
-Application ID: com.msi.quicknote
-Compiler Target: Android SDK 34 (Compiled on SDK 34 with Edge-To-Edge displays)
+Version: 4.2 (versionCode: 6)
+Application ID: com.aistudio.quicknote.kxmpzq
+Compiler Target: Android SDK 36 (Compiled on SDK 36 with Edge-To-Edge displays)
 
 Build Artifacts:
 - Compiled Debug Binary: /app/build/outputs/apk/debug/app-debug.apk
